@@ -1,64 +1,90 @@
 define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, Pdf) {
 	return Backbone.Model.extend({
 		initialize: function() {
-			// console.log(jsPDF);
+			if (jsPDF)
+				console.error('Global instance of jsPDF leaked into application');
 		},
-		image: function(image, success, error) {
-			var data, canvas, ctx;
+
+		// load image from url and return its data uri string
+		// url is expected in image.src
+		load: function(image) {
+			var deferred = $.Deferred();
+			// create image to load from url
 			var img = new Image();
 			img.setAttribute('crossOrigin', 'anonymous');
 			img.onload = function() {
-				// create the canvas element
-				canvas = document.createElement('canvas');
-				canvas.width = img.width;
+				// create canvas and draw image
+				var canvas = document.createElement('canvas');
+				canvas.width  = img.width;
 				canvas.height = img.height;
-				// get context and draw the image
-				ctx = canvas.getContext('2d');
-				ctx.drawImage(img, 0, 0, img.width, img.height);
-				// get canvas data URL
+				canvas.getContext('2d').drawImage(img, 0, 0);
+				// get data uri from canvas
 				try {
-					data = canvas.toDataURL('image/jpeg');
-					success({ src: image.src, left: image.left, top: image.top, data: data });
+					deferred.resolve({
+						src:  image.src,
+						left: image.left,
+						top:  image.top,
+						data: canvas.toDataURL('image/jpeg'),
+					});
 				} catch(e) {
-					error(e);
+					deferred.reject(e);
 				}
 			}
-			// load image URL
+			// load image
 			try {
 				img.src = image.src;
 			} catch(e) {
-				error(e);
+				deferred.reject(e);
 			}
+			return deferred.promise();
 		},
-		print: function() {
-			var doc = new Pdf();
 
+		// generates an array of example images
+		images: function() {
 			var images = [];
+			// loop over an interesting shape
 			for (var y = 0; y < 10; ++y)
 				for (var x = 0; x + y < 10; ++x)
-						images.push({ src: 'http://c.tiles.mapbox.com/v3/examples.map-9ijuk24y/6/' + (x + 35) + '/' + (y + 20) + '.png', left: x, top: y });
+					// get url and add current image
+					images.push({
+						src: 'http://c.tiles.mapbox.com/v3/examples.map-9ijuk24y/6/' + (x + 35) + '/' + (y + 20) + '.png',
+						left: x,
+						top: y
+					});
+			return images;
+		},
 
-			var size = 15;
+		// generate document from tiles
+		print: function() {
+			// create a new document
+			var doc = new Pdf();
+
+			// set parameters
 			var offset = { left: 10, top: 30 };
+			var size = 15;
 
-			var count = 0;
-			for (var i = 0; i < images.length; ++i) {
-				this.image(images[i], function(image) {
-					var left = offset.left + (size * image.left),
-						top  = offset.top  + (size * image.top);
-					console.log({ left: left, top: top });
-					doc.addImage(image.data, 'jpeg', left, top, size, size);
-					count++;
-				}, function(e) {
-					console.log(e);
-				});
-			}
+			// load all images and give me the promises
+			var promises = this.images().map(this.load);
 
-			//while (count < images.length);
-			setTimeout(function(){
-				doc.text('Generated PDF with ' + count + ' tiles', 10, 25);
-				doc.output('dataurl');
-			}, 1000);
+			// handle individual results
+			promises.map(function(promise) {
+				promise.done(function(e) {
+					// find coordinates from grid
+					var left = offset.left + (size * e.left),
+						top  = offset.top  + (size * e.top);
+					// add image to document
+					doc.addImage(e.data, 'jpeg', left, top, size, size);
+				}).fail(console.log);
+			});
+
+			// handle overall readiness
+			$.when.apply($, promises).done(function() {
+				// add some text
+				doc.text('Printable Leaflet Map', 10, 25);
+				// output the resulting document
+				var pdf = doc.output('dataurlstring');
+				window.open(pdf, 'Document');
+			}, console.log);
 		},
 	});
 });
