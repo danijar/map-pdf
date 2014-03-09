@@ -31,5 +31,6 @@ requirejs.config({
 require(['underscore', 'jquery', 'view/map', 'model/print'], function(_, $, Map, Print){
 	var map = new Map();
 	var print = new Print();
-	print.print();
+	print.fit();
+	print.generate();
 });

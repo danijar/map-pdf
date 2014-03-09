@@ -1,8 +1,28 @@
 define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, Pdf) {
 	return Backbone.Model.extend({
+		defaults: {
+			format: { width: 210, height: 297 },
+			width: 0,
+			height: 0,
+			dpi: 300,
+			ratio: 0,
+		},
+
 		initialize: function() {
-			if (jsPDF)
-				console.error('Global instance of jsPDF leaked into application');
+			_.bindAll(this, 'load', 'images', 'fit', 'generate');
+
+			// check for library compatibility
+			if (jsPDF) console.error('Global instance of jsPDF leaked into application');
+
+			// calculate format from given values
+			var format = this.get('format');
+			this.set({
+				width:  format.width  * this.get('dpi') / 25.4,
+				height: format.height * this.get('dpi') / 25.4,
+			});
+			this.set({
+				ratio: this.get('width') / this.get('height'),
+			});
 		},
 
 		// load image from url and return its data uri string
@@ -20,12 +40,8 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, P
 				canvas.getContext('2d').drawImage(img, 0, 0);
 				// get data uri from canvas
 				try {
-					deferred.resolve({
-						src:  image.src,
-						left: image.left,
-						top:  image.top,
-						data: canvas.toDataURL('image/jpeg'),
-					});
+					image.data = canvas.toDataURL('image/jpeg');
+					deferred.resolve(image);
 				} catch(e) {
 					deferred.reject(e);
 				}
@@ -39,48 +55,64 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, P
 			return deferred.promise();
 		},
 
-		// generates an array of example images
+		// fetches images from map
 		images: function() {
+			// calculate scale factor
+			var scale = this.get('width') / $('#map').width();
+			// fetch all tiles from map
 			var images = [];
-			// loop over an interesting shape
-			for (var y = 0; y < 10; ++y)
-				for (var x = 0; x + y < 10; ++x)
-					// get url and add current image
-					images.push({
-						src: 'http://c.tiles.mapbox.com/v3/examples.map-9ijuk24y/6/' + (x + 35) + '/' + (y + 20) + '.png',
-						left: x,
-						top: y
-					});
+			$('.leaflet-tile-container img').each(function() {
+				// get dimensions and url
+				images.push({
+					left:   scale * parseInt($(this).css('left')),
+					top:    scale * parseInt($(this).css('top')),
+					width:  scale * parseInt($(this).css('width')),
+					height: scale * parseInt($(this).css('height')),
+					src:    $(this).attr('src'),
+				});
+			});
 			return images;
 		},
 
-		// generate document from tiles
-		print: function() {
-			// create a new document
-			var doc = new Pdf();
+		// resize map to fit format
+		fit: function() {
+			var height = $('#map').height(),
+				width  = $('#map').width(),
+				ratio  = width / height;
+			// map is too wide, decrease its width
+			if (ratio > this.get('ratio'))
+				$('#map').width(height * this.get('ratio'));
+			// map is too tall, decrease its height
+			else
+				$('#map').height(width / this.get('ratio'));
+		},
 
-			// set parameters
-			var offset = { left: 10, top: 30 };
-			var size = 15;
+		// generate document from tiles
+		generate: function() {
+
+			// create a new document
+			var width = this.get('width'), height = this.get('height');
+			var doc = new Pdf({
+				unit: 'pt',
+				compress: false,
+				format: [ width, height ],
+			});
 
 			// load all images and give me the promises
 			var promises = this.images().map(this.load);
 
 			// handle individual results
 			promises.map(function(promise) {
-				promise.done(function(e) {
-					// find coordinates from grid
-					var left = offset.left + (size * e.left),
-						top  = offset.top  + (size * e.top);
-					// add image to document
-					doc.addImage(e.data, 'jpeg', left, top, size, size);
+				promise.done(function(image) {
+					doc.addImage(image.data, 'jpeg', image.left, image.top, image.width, image.height);
 				}).fail(console.log);
 			});
 
 			// handle overall readiness
 			$.when.apply($, promises).done(function() {
 				// add some text
-				doc.text('Printable Leaflet Map', 10, 25);
+				doc.setFontSize(100);
+				doc.text(document.title, 50, 100);
 				// output the resulting document
 				var pdf = doc.output('dataurlstring');
 				window.open(pdf, 'Document');
