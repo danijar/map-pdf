@@ -28,9 +28,22 @@ requirejs.config({
 	}
 });
 
-require(['underscore', 'jquery', 'view/map', 'model/print'], function(_, $, Map, Print){
+require(['underscore', 'jquery', 'view/map', 'model/print'], function(_, $, Map, Print) {
+	//  create map and print model
 	var map = new Map();
 	var print = new Print();
-	print.fit();
-	print.generate();
+
+	// move this to print later on,
+	// pass instance into constructor
+	function resize() {
+		print.fit();
+		map.map.invalidateSize();
+	}
+	resize();
+	$(window).resize(resize);
+
+	// initiate printing
+	$('#button').click(function() {
+		print.generate();
+	});
 });

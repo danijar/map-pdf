@@ -1,15 +1,17 @@
 define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, Pdf) {
 	return Backbone.Model.extend({
 		defaults: {
-			format: { width: 210, height: 297 },
-			width: 0,
+			format: { width: 52, height: 74 }, // 210 x 297 for A4
+			width:  0,
 			height: 0,
-			dpi: 300,
-			ratio: 0,
+			dpi:  300,
+			ratio:  0,
+			doc: null,
+			scale:  1,
 		},
 
 		initialize: function() {
-			_.bindAll(this, 'load', 'images', 'fit', 'generate');
+			_.bindAll(this, 'load', 'images', 'fit', 'generate', 'output');
 
 			// check for library compatibility
 			if (jsPDF) console.error('Global instance of jsPDF leaked into application');
@@ -57,39 +59,66 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, P
 
 		// fetches images from map
 		images: function() {
-			// calculate scale factor
-			var scale = this.get('width') / $('#map').width();
+			// find layer offset
+			var offset = $('.leaflet-tile-container img').parent().first().offset();
+
+			var scale  = this.get('scale'),
+				width  = this.get('width'),
+				height = this.get('height');
+
 			// fetch all tiles from map
 			var images = [];
 			$('.leaflet-tile-container img').each(function() {
 				// get dimensions and url
-				images.push({
-					left:   scale * parseInt($(this).css('left')),
-					top:    scale * parseInt($(this).css('top')),
-					width:  scale * parseInt($(this).css('width')),
-					height: scale * parseInt($(this).css('height')),
+				var position = $(this).position();
+				var image = ({
+					left:   (offset.left + position.left) / scale,
+					top:    (offset.top  + position.top ) / scale,
+					width:  parseInt($(this).css('width')),
+					height: parseInt($(this).css('height')),
 					src:    $(this).attr('src'),
 				});
+
+				// perform view culling
+				if (image.left + image.width  < 0) return;
+				if (image.top  + image.height < 0) return;
+				if (image.left > width )           return;
+				if (image.top  > height)           return;
+
+				// add to array
+				images.push(image);
 			});
 			return images;
 		},
 
 		// resize map to fit format
 		fit: function() {
-			var height = $('#map').height(),
-				width  = $('#map').width(),
+			// resize map to cover every pixel of format
+			$('#map').width(this.get('width'));
+			$('#map').height(this.get('height'));
+
+			// zoom map so that it fits on screen
+			var height = $(window).height(),
+				width  = $(window).width(),
 				ratio  = width / height;
-			// map is too wide, decrease its width
+
+			// map is too wide
 			if (ratio > this.get('ratio'))
-				$('#map').width(height * this.get('ratio'));
-			// map is too tall, decrease its height
+				this.set({ scale: height / this.get('height') });
+			// map is too tall
 			else
-				$('#map').height(width / this.get('ratio'));
+				this.set({ scale: width / this.get('width') });
+
+			// apply zoom
+			$('#map').css({
+				'-webkit-transform': 'scale(' + this.get('scale') + ')',
+				'-moz-transform': 'scale(' + this.get('scale') + ')',
+				'transform': 'scale(' + this.get('scale') + ')'
+			});
 		},
 
 		// generate document from tiles
 		generate: function() {
-
 			// create a new document
 			var width = this.get('width'), height = this.get('height');
 			var doc = new Pdf({
@@ -97,11 +126,13 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, P
 				compress: false,
 				format: [ width, height ],
 			});
+			this.set({ doc: doc });
 
 			// load all images and give me the promises
 			var promises = this.images().map(this.load);
 
 			// handle individual results
+			var doc = this.get('doc');
 			promises.map(function(promise) {
 				promise.done(function(image) {
 					doc.addImage(image.data, 'jpeg', image.left, image.top, image.width, image.height);
@@ -109,14 +140,20 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, P
 			});
 
 			// handle overall readiness
-			$.when.apply($, promises).done(function() {
-				// add some text
-				doc.setFontSize(100);
-				doc.text(document.title, 50, 100);
-				// output the resulting document
-				var pdf = doc.output('dataurlstring');
-				window.open(pdf, 'Document');
-			}, console.log);
+			$.when.apply($, promises).done(_.bind(function() {
+				this.output();
+			}, this), console.log);
 		},
+
+		// output generated pdf
+		output: function() {
+			// add some text
+			var size = parseInt(0.04 * (this.get('width') + this.get('height')) / 2);
+			this.get('doc').setFontSize(size);
+			this.get('doc').text(document.title, size, 1.5 * size);
+			// output the resulting document
+			var pdf = this.get('doc').output('dataurlstring');
+			window.open(pdf, 'Document');
+		}
 	});
 });
