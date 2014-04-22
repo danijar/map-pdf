@@ -2,14 +2,19 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, P
 	return Backbone.Model.extend({
 		defaults: {
 			format: { width: 52, height: 74 }, // 210 x 297 for A4
-			width:  0,
-			height: 0,
-			dpi:  300,
-			ratio:  0,
-			doc: null,
-			scale:  1,
+			width:      0,
+			height:     0,
+			dpi:      300,
+			ratio:      0,
+			doc:     null,
+			scale:      1,
+            element: null,
 		},
 
+        /*
+         * Example construction:
+         * var print = new Print({ format: { width: 210, height: 74 }, element: §('#map') });
+         */
 		initialize: function() {
 			_.bindAll(this, 'load', 'images', 'fit', 'generate', 'output');
 
@@ -31,15 +36,18 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, P
 		// url is expected in image.src
 		load: function(image) {
 			var deferred = $.Deferred();
+
 			// create image to load from url
 			var img = new Image();
 			img.setAttribute('crossOrigin', 'anonymous');
+
 			img.onload = function() {
 				// create canvas and draw image
 				var canvas = document.createElement('canvas');
 				canvas.width  = img.width;
 				canvas.height = img.height;
 				canvas.getContext('2d').drawImage(img, 0, 0);
+
 				// get data uri from canvas
 				try {
 					image.data = canvas.toDataURL('image/jpeg');
@@ -48,6 +56,7 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, P
 					deferred.reject(e);
 				}
 			}
+
 			// load image
 			try {
 				img.src = image.src;
@@ -60,7 +69,7 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, P
 		// fetches images from map
 		images: function() {
 			// find layer offset
-			var offset = $('.leaflet-tile-container img').parent().first().offset();
+			var offset = this.get('element').find('.leaflet-tile-container img').parent().first().offset();
 
 			var scale  = this.get('scale'),
 				width  = this.get('width'),
@@ -68,7 +77,11 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, P
 
 			// fetch all tiles from map
 			var images = [];
-			$('.leaflet-tile-container img').each(function() {
+            this.get('element').find('.leaflet-tile-container img').each(function() {
+				// skip broken images
+				if ($(this).hasClass('mappdf-tile-error'))
+					return;
+
 				// get dimensions and url
 				var position = $(this).position();
 				var image = ({
@@ -94,8 +107,8 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, P
 		// resize map to fit format
 		fit: function() {
 			// resize map to cover every pixel of format
-			$('#map').width(this.get('width'));
-			$('#map').height(this.get('height'));
+            this.get('element').width(this.get('width'));
+            this.get('element').height(this.get('height'));
 
 			// zoom map so that it fits on screen
 			var height = $(window).height(),
@@ -110,7 +123,7 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, P
 				this.set({ scale: width / this.get('width') });
 
 			// apply zoom
-			$('#map').css({
+            this.get('element').css({
 				'-webkit-transform': 'scale(' + this.get('scale') + ')',
 				'-moz-transform': 'scale(' + this.get('scale') + ')',
 				'transform': 'scale(' + this.get('scale') + ')'
@@ -140,7 +153,7 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, P
 			});
 
 			// handle overall readiness
-			$.when.apply($, promises).done(_.bind(function() {
+			$.when.apply($, promises).always(_.bind(function() {
 				this.output();
 			}, this), console.log);
 		},
@@ -151,6 +164,7 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'], function(_, $, Backbone, P
 			var size = parseInt(0.04 * (this.get('width') + this.get('height')) / 2);
 			this.get('doc').setFontSize(size);
 			this.get('doc').text(document.title, size, 1.5 * size);
+
 			// output the resulting document
 			var pdf = this.get('doc').output('dataurlstring');
 			window.open(pdf, 'Document');

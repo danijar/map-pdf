@@ -31,7 +31,7 @@ requirejs.config({
 require(['underscore', 'jquery', 'view/map', 'model/print'], function(_, $, Map, Print) {
 	//  create map and print model
 	var map = new Map();
-	var print = new Print();
+	var print = new Print({ element: $('#map') });
 
 	// move this to print later on,
 	// pass instance into constructor
