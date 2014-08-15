@@ -1,15 +1,15 @@
 requirejs.config({
 	baseUrl: 'js',
-	urlArgs: 'time=' + (new Date()).getTime(), // prevent caching for development
+	urlArgs: 'time=' + (new Date()).getTime(), // Bypass cache for development
 	paths: {
 		underscore: 'lib/underscore-1.5.2/underscore-min',
-		backbone: 'lib/backbone-1.1.0/backbone-min',
-		jquery: 'lib/jquery-1.10.2/jquery-1.10.2.min',
-		leaflet: 'lib/leaflet-0.8-dev/leaflet',
-		jspdf: 'lib/jspdf-0.9.0/jspdf.source',
-		text: "lib/text-2.0.10/text",
-		css: 'lib/require-css-0.1.0/css',
-		template: '../template',
+		backbone:   'lib/backbone-1.1.0/backbone-min',
+		jquery:     'lib/jquery-1.10.2/jquery-1.10.2.min',
+		leaflet:    'lib/leaflet-0.8-dev/leaflet',
+		jspdf:      'lib/jspdf-0.9.0/jspdf.source',
+		text:       'lib/text-2.0.10/text',
+		css:        'lib/require-css-0.1.0/css',
+		template:   '../template',
 	},
 	shim: {
 		jquery: {
@@ -28,13 +28,15 @@ requirejs.config({
 	}
 });
 
-require(['underscore', 'jquery', 'view/map', 'model/print'], function(_, $, Map, Print) {
-	//  create map and print model
+require(['underscore', 'jquery', 'view/map', 'model/print'],
+	function(_, $, Map, Print) {
+
+	// Create map and print model
 	var map = new Map();
 	var print = new Print({ element: $('#map') });
 
-	// move this to print later on,
-	// pass instance into constructor
+	// Move this to print later on,
+	// Pass instance into constructor
 	function resize() {
 		print.fit();
 		map.map.invalidateSize();
@@ -42,8 +44,6 @@ require(['underscore', 'jquery', 'view/map', 'model/print'], function(_, $, Map,
 	resize();
 	$(window).resize(resize);
 
-	// initiate printing
-	$('#button').click(function() {
-		print.generate();
-	});
+	// Initiate printing
+	$('#button').click(print.generate);
 });
