@@ -19,6 +19,7 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'],
          *     format: { width: 210, height: 74 },
          *     element: §('#map')
          * });
+         * print.generate();
          */
 		initialize: function() {
 			_.bindAll(this, 'load', 'images', 'fit', 'generate', 'output');
@@ -168,6 +169,11 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'],
 				}).fail(console.log);
 			});
 
+			// Open up result window synchronously
+			if (this.popup)
+				this.popup.close();
+			this.popup = window.open('', 'Loading');
+
 			// Handle overall readiness
 			$.when.apply($, promises).always(_.bind(function() {
 				this.output();
@@ -177,13 +183,18 @@ define(['underscore', 'jquery', 'backbone', 'jspdf'],
 		// Output generated pdf
 		output: function() {
 			// Add some text
-			var size = parseInt(0.04 * (this.get('width') + this.get('height')) / 2);
-			this.get('doc').setFontSize(size);
-			this.get('doc').text(document.title, size, 1.5 * size);
+			var size = parseInt(0.02 * (this.get('width') + this.get('height')) / 2);
+			var doc = this.get('doc');
+			doc.setFontSize(size);
+			doc.setTextColor(0, 0, 0);
+			doc.text('This map was generated using the open source library ' +
+				'map-pdf written by Danijar Hafner.\nThe code can be found at ' +
+				'github.com/danijar/map-pdf. Feel free to remove this notice.',
+				size, 1.5 * size);
 
 			// Output the resulting document
 			var pdf = this.get('doc').output('dataurlstring');
-			window.open(pdf, 'Document');
+			this.popup.location = pdf;
 		}
 	});
 });
